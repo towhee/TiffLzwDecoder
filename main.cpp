@@ -43,71 +43,66 @@
     3.3 ms.
 
 */
-#include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QFile>
-#include <QBuffer>
-#include <QDataStream>
-#include <QDebug>
 
+#include <chrono>
+#include <vector>
+#include <iomanip>
+#include <fstream>
+#include <iostream>
 #include <algorithm>
 
 const unsigned int CLEAR_CODE = 256;
 const unsigned int EOF_CODE = 257;
 const unsigned int MAXCODE = 4093;      // 12 bit max less some head room
 
-QString lzwFile =          "/Users/roryhill/Pictures/_TIFF_lzw1/lzw.tif";
-QString uncompressedFile = "/Users/roryhill/Pictures/_TIFF_lzw1/base.tif";
+const uint32_t lzwOffsetToFirstStrip = 34312;
+const uint32_t lzwLengthFirstStrip = 123177;
+const uint32_t uncompressedOffsetToFirstStrip = 34296;
+const uint32_t uncompressedLengthFirstStrip = 1080000;
 
-quint32 lzwOffsetToFirstStrip = 34312;
-quint32 lzwLengthFirstStrip = 123177;
-quint32 uncompressedOffsetToFirstStrip = 34296;
-quint32 uncompressedLengthFirstStrip = 1080000;
-QByteArray baBaseFirstStrip;
-
-void byteArrayToHex(QByteArray &ba, int cols, int start, int end)
+void byteArrayToHex(std::vector<char> v, int cols, int start, int end)
 {
     int n = 0;
-    QDebug debug = qDebug();
-    debug.noquote();
-    debug << "\n";
+    std::cout << std::setw(2) << std::endl;
     for (int i = start; i < start + end; i++) {
-        quint8 x = (0xff & (unsigned int)ba[i]);
-        debug << QStringLiteral("%1").arg(x, 2, 16, QLatin1Char('0')).toUpper();
-        if (++n % cols == 0) debug << " " << n + start << "\n";
+        uint x = (0xff & (unsigned int)v[i]);
+        std::cout << std::hex << std::uppercase << x << " ";
+        if (++n % cols == 0) std::cout << " " << std::dec << n + start << std::endl;
     }
-    debug << "\n";
+    std::cout << std::endl;
 }
 
+
 #define DICT_SIZE  131072
-void decompressLZW(QByteArray &inBa, QByteArray &outBa)
+void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
 {
     char* c = inBa.data();
+    uint cc = (*c & 0xff);
     char* out = outBa.data();
     int rowLength = 2400;
     // dictionary has 4096 (12 bit max) items of 32 bytes (max string length)
     char dict[DICT_SIZE];                           // 4096 * 32
-    quint8 sLen[4096];                              // dictionary code string length
+    int8_t sLen[4096];                              // dictionary code string length
     std::memset(&sLen, 1, 4096);                    // default string length = 1
     char ps[32];                                    // previous string
     int psLen = 0;                                  // length of prevString
     // code is the offset in the dictionary array (code * 32)
-    quint32 code;
-    quint32 nextCode = 258;
+    int32_t code;
+    int32_t nextCode = 258;
     char prev[3];                                   // circ buffer of last three bytes
     std::memset(prev, 0, 3);
     int incoming = 0;                               // incoming counter
     int n = 0;                                      // code counter
     int m = 0;                                      // prev RGB counter
     // bit management
-    quint32 pending = 0;                            // bit buffer
+    int32_t pending = 0;                            // bit buffer
     int availBits = 0;                              // bits in the buffer
     int codeSize = 9;                               // number of bits to make code
-    quint32 currCode = 257;                         // start code
-    quint32 nextBump = 512;                         // when to increment code size
+    int32_t currCode = 257;                         // start code
+    int32_t nextBump = 512;                         // when to increment code size
 
     // read incoming bytes into the bit buffer (pending) using the char pointer c
-    while (incoming < inBa.length()) {
+    while (incoming < inBa.size()) {
         // get code
         while (availBits < codeSize) {              // for example
             pending <<= 8;                          // 00000000 00000000 00XXXXXX 00000000
@@ -184,61 +179,59 @@ void decompressLZW(QByteArray &inBa, QByteArray &outBa)
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication a(argc, argv);
-
-    // load the file we want to decompress into a QByteArray
-    QFile f(lzwFile);
-    f.open(QIODevice::ReadOnly);
-    f.seek(lzwOffsetToFirstStrip);
-    QByteArray baLzw = f.read(lzwLengthFirstStrip);
-    f.close();
+    std::ifstream f1("/Users/roryhill/Pictures/_TIFF_lzw1/lzw.tif", std::ios::in | std::ios::binary | std::ios::ate);
+    std::vector<char> lzwFirstStrip(lzwLengthFirstStrip);
+    f1.seekg(lzwOffsetToFirstStrip);
+    f1.read(lzwFirstStrip.data(), lzwFirstStrip.size());
+    f1.close();
 
     // load the "answer" from the same image, saved as an uncompressed tif.  We will
     // use this to confirm our decompression of lzw.tiff is correct
-    QFile f1(uncompressedFile);
-    f1.open(QIODevice::ReadOnly);
-    f1.seek(uncompressedOffsetToFirstStrip);
-    baBaseFirstStrip = f1.read(uncompressedLengthFirstStrip);
-    f1.close();
+    std::ifstream f2("/Users/roryhill/Pictures/_TIFF_lzw1/base.tif", std::ios::in | std::ios::binary | std::ios::ate);
+    std::vector<char> baseFirstStrip(uncompressedLengthFirstStrip);
+    f2.seekg(uncompressedOffsetToFirstStrip);
+    f2.read(baseFirstStrip.data(), baseFirstStrip.size());
+    f2.close();
 
     // Create the byte array to hold the decompressed byte stream
-    QByteArray ba;
-    ba.resize(uncompressedLengthFirstStrip);
+    std::vector<char> ba(uncompressedLengthFirstStrip);
 
-    QElapsedTimer t;
-    int runs = 1;
-    t.start();
+    int runs = 100;
+    auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < runs; i++) {
-        decompressLZW(baLzw, ba);  //  3.22 ms
+        decompressLZW(lzwFirstStrip, ba);  //  3.2 - 3.8 ms per run on Rory macbookpro
     }
 
-    qint64 nsecs = t.nsecsElapsed() / runs;
+    auto end = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    ms /= (1000 * runs);
     int pixels = 261600 / 3;
-    double mp = (double)pixels / 1024 / 1024;
-    double ms = (double)nsecs / 1000000;
-    double secs = (double)nsecs / 1000000000;
-    double mpPerSec = mp / secs;
-    qDebug() << "runs:" << runs
-             << "  ms:" << ms
-             << "  mp/sec:" << mpPerSec
-                ;
+    double mp = (double)pixels / 1000000;
+    double mpPerSec = mp / ms * 1000;                        // megapixels / sec
+
+    std::cout << std::fixed << std::showpoint << std::setprecision(2)
+         << "runs: " << runs
+         << "   ms: " << ms
+         << "   mp/sec: " << mpPerSec
+         << "    ";
 
     // check result
     bool isErr = false;
     for (int i = 0; i < 261600; i++) {
-        if (ba[i] != baBaseFirstStrip[i]) {
-            qDebug() << "error at" << i;
+        if (ba[i] != baseFirstStrip[i]) {
+            std::cout << "error at " << i << std::endl;
             isErr = true;
             break;
         }
     }
-    if (!isErr) qDebug() << "No errors";
-    f1.close();
+    if (!isErr) std::cout << "No errors" << std::endl;
 
     // helper report
-//    byteArrayToHex(ba, 50, 0, 500);
-//    byteArrayToHex(baBaseFirstStrip, 50, 0, 500);
+    byteArrayToHex(ba, 50, 0, 500);
+    byteArrayToHex(baseFirstStrip, 50, 0, 500);
 
-    qDebug() << "Done.";
+    // pause if running executable
+//    std::cout << "Paused, press ENTER to continue." << std::endl;
+//    std::cin.ignore();
     exit(0);
 }
