@@ -81,7 +81,6 @@ void byteArrayToHex(std::vector<char> v, int cols, int start, int end)
 void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
 {
     char* c = inBa.data();
-    uint8_t cc = (*c & 0xff);
     char* out = outBa.data();
     int rowLength = 2400;
     // dictionary has 4096 (12 bit max) items of 32 bytes (max string length)
