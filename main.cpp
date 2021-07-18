@@ -73,18 +73,22 @@ void byteArrayToHex(std::vector<char> v, int cols, int start, int end)
 }
 
 
-#define DICT_SIZE  131072
+#define DICT_STRING_SIZE 32
+#define DICT_SIZE  DICT_STRING_SIZE * 4096   //131072
+/*
+    Works for RGB but not for RRGGBB (planarConfiguration = 2).  Requires tweak to prev.
+*/
 void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
 {
     char* c = inBa.data();
-    uint cc = (*c & 0xff);
     char* out = outBa.data();
     int rowLength = 2400;
     // dictionary has 4096 (12 bit max) items of 32 bytes (max string length)
     char dict[DICT_SIZE];                           // 4096 * 32
+//    char* d = dict;
     int8_t sLen[4096];                              // dictionary code string length
     std::memset(&sLen, 1, 4096);                    // default string length = 1
-    char ps[32];                                    // previous string
+    char ps[DICT_STRING_SIZE];                      // previous string
     int psLen = 0;                                  // length of prevString
     // code is the offset in the dictionary array (code * 32)
     int32_t code;
@@ -101,13 +105,13 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
     int32_t currCode = 257;                         // start code
     int32_t nextBump = 512;                         // when to increment code size
 
-    // read incoming bytes into the bit buffer (pending) using the char pointer c
+     // read incoming bytes into the bit buffer (pending) using the char pointer c
     while (incoming < inBa.size()) {
         // get code
-        while (availBits < codeSize) {              // for example
+        while (availBits < codeSize) {              // for example: codeSize = 9, Y = code
             pending <<= 8;                          // 00000000 00000000 00XXXXXX 00000000
             pending |= (*c & 0xff);                 // 00000000 00000000 00XXXXXX 00111011
-            availBits += 8;
+            availBits += 8;                         //                     YYYYYY YYY
             c++;
             incoming++;
         }
@@ -119,14 +123,14 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
             codeSize = 9;
             currCode = 257;
             nextBump = 512;
-            std::memset(dict, 0, DICT_SIZE);
+//            std::memset(dict, 0, DICT_SIZE);
             // reset dictionary
             for (uint i = 0 ; i < 256 ; i++ ) {
-                dict[i*32] = (char)i;
+                dict[i * DICT_STRING_SIZE] = (char)i;
             }
             nextCode = 258;
             // clear prevString
-            std::memset(ps, 0, 32);
+            std::memset(ps, 0, DICT_STRING_SIZE);
             psLen = 0;
             continue;
         }
@@ -141,11 +145,16 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
             break;
         }
 
+//        char* dOff = d + code * 32;
+        uint32_t off = code * DICT_STRING_SIZE;
+
         // if code not found then add to dictionary
         if (code >= nextCode) {
             //  dictionary[code] = prevString + prevString[0];
-            std::memcpy(&dict[code*32], &ps, psLen);
-            std::memcpy(&dict[code*32 + psLen], &ps, 1);
+//            std::memcpy(dOff, &ps, psLen);
+//            std::memcpy(dOff + psLen, &ps, 1);
+            std::memcpy(&dict[off], &ps, psLen);
+            std::memcpy(&dict[off + psLen], &ps, 1);
             sLen[code] = psLen + 1;
         }
 
@@ -154,25 +163,32 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
             // if end of row reset prev pixel rgb
             if (n % rowLength == 0) std::memset(prev, 0, 3);
             // string char = code string element + value of previous pixel r/g/b
-            char b = dict[code*32 + i] + prev[m];  // char b = *(d + i) + prev[m]; no speed increase
+            char b = dict[off + i] + prev[m];  // char b = *(d + i) + prev[m]; no speed increase
+//            char b = *(dOff + i) + prev[m];
             prev[m] = b;
             *out = b;
             out++;
-            m++;                    //  m < 2 ? m++ : m = 0;  no speed increase
-            if (m > 2) m = 0;       //
+            switch (m) {
+            case 2:
+                m = 0;
+                break;
+            default:
+                ++m;
+            }
             n++;
         }
 
         // add nextCode to dictionary
         if (psLen && nextCode <= MAXCODE) {
             // dictionary[nextCode++] = prevString + dictionary[code][0];
-            std::memcpy(&dict[nextCode * 32], &ps, psLen);
-            std::memcpy(&dict[nextCode * 32 + psLen], &dict[code*32], sLen[code]);
+            std::memcpy(&dict[nextCode * DICT_STRING_SIZE], &ps, psLen);
+            std::memcpy(&dict[nextCode * DICT_STRING_SIZE + psLen], &dict[off], sLen[code]);
             sLen[nextCode] = psLen + 1;
             nextCode++;
         }
         // prevString = dictionary[code];
-        memcpy(&ps, &dict[code*32], sLen[code]);
+//        memcpy(&ps, dOff, sLen[code]);
+        memcpy(&ps, &dict[off], sLen[code]);
         psLen = sLen[code];
     }
 }
@@ -227,8 +243,8 @@ int main(int argc, char *argv[])
     if (!isErr) std::cout << "No errors" << std::endl;
 
     // helper report
-    byteArrayToHex(ba, 50, 0, 500);
-    byteArrayToHex(baseFirstStrip, 50, 0, 500);
+//    byteArrayToHex(ba, 50, 0, 500);
+//    byteArrayToHex(baseFirstStrip, 50, 0, 500);
 
     // pause if running executable
 //    std::cout << "Paused, press ENTER to continue." << std::endl;
