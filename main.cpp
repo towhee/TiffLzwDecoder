@@ -4,7 +4,7 @@
     tiff image may have 1 to many strips. The strip is an array of bytes RGBRGB... In
     this case we want to decode the first strip in the tiff file.
 
-    The compressed file is lzw.tif.  The offset and length of the first strip have been
+    The compressed file is lzw.tif.  The offset and length of the first strip has been
     predefined.  The same image has been saved as an uncompressed tiff called base.tif.
     We can use this to check our decompression of lzw is correct.
 
@@ -46,6 +46,7 @@
 
 #include <chrono>
 #include <vector>
+#include <array>
 #include <iomanip>
 #include <fstream>
 #include <iostream>
@@ -72,6 +73,13 @@ void byteArrayToHex(std::vector<char> v, int cols, int start, int end)
     std::cout << std::endl;
 }
 
+extern uint32_t codeMask[32];
+uint32_t codeMask[32];
+
+void buildCodeMask()
+{
+    for (int i = 0; i < 32; i++) codeMask[i] = (1 << i) - 1;
+}
 
 #define DICT_STRING_SIZE 32
 #define DICT_SIZE  DICT_STRING_SIZE * 4096   //131072
@@ -84,49 +92,65 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
     char* out = outBa.data();
     int rowLength = 2400;
     // dictionary has 4096 (12 bit max) items of 32 bytes (max string length)
-    char dict[DICT_SIZE];                           // 4096 * 32
+    unsigned char dict[DICT_SIZE];                           // 4096 * 32
 //    char* d = dict;
     int8_t sLen[4096];                              // dictionary code string length
     std::memset(&sLen, 1, 4096);                    // default string length = 1
     char ps[DICT_STRING_SIZE];                      // previous string
-    int psLen = 0;                                  // length of prevString
+    size_t psLen = 0;                                  // length of prevString
+//    int psLen = 0;                                  // length of prevString
     // code is the offset in the dictionary array (code * 32)
     int32_t code;
     int32_t nextCode = 258;
     char prev[3];                                   // circ buffer of last three bytes
     std::memset(prev, 0, 3);
-    int incoming = 0;                               // incoming counter
+    unsigned long incoming = 0;                     // incoming counter
     int n = 0;                                      // code counter
     int m = 0;                                      // prev RGB counter
     // bit management
     int32_t pending = 0;                            // bit buffer
-    int availBits = 0;                              // bits in the buffer
-    int codeSize = 9;                               // number of bits to make code
+    int32_t availBits = 0;                              // bits in the buffer
+    int32_t codeBits = 9;                               // number of bits to make code
+//    int codeBitsMask = (1 << codeBits) - 1;         // mask to clear current code
     int32_t currCode = 257;                         // start code
     int32_t nextBump = 512;                         // when to increment code size
 
-     // read incoming bytes into the bit buffer (pending) using the char pointer c
+//#define	GetNextCode(sp, bp, code) {				\
+//    nextdata = (nextdata<<8) | *(bp)++;			\
+//    nextbits += 8;						\
+//    if (nextbits < nbits) {					\
+//        nextdata = (nextdata<<8) | *(bp)++;		\
+//        nextbits += 8;					\
+//    }							\
+//    code = (hcode_t)((nextdata >> (nextbits-nbits)) & nbitsmask);	\
+//    nextbits -= nbits;					\
+//}
+
+
+    // read incoming bytes into the bit buffer (pending) using the char pointer c
     while (incoming < inBa.size()) {
         // get code
-        while (availBits < codeSize) {              // for example: codeSize = 9, Y = code
-            pending <<= 8;                          // 00000000 00000000 00XXXXXX 00000000
-            pending |= (*c & 0xff);                 // 00000000 00000000 00XXXXXX 00111011
-            availBits += 8;                         //                     YYYYYY YYY
+        while (availBits < codeBits) {
+            pending = (pending<<8) | (uint8_t)*c;   // make room in bit buf for char
+//            pending = (pending<<8) | (*c & 0xff);   // make room in bit buf for char
+            availBits += 8;
             c++;
             incoming++;
         }
-        code = pending >> (availBits - codeSize);   // extract code from buffer
-        availBits -= codeSize;                      // update available
-        pending &= (1 << availBits) - 1;            // apply mask to zero consumed code bits
+//        code = (pending >> (availBits - codeBits)) & codeMask[availBits];
+        code = pending >> (availBits - codeBits);   // extract code from buffer
+        availBits -= codeBits;                      // update available
+        pending &= codeMask[availBits];             // apply mask to zero consumed code bits
+//        pending &= (1 << availBits) - 1;            // apply mask to zero consumed code bits
 
         if (code == CLEAR_CODE) {
-            codeSize = 9;
+            codeBits = 9;
             currCode = 257;
             nextBump = 512;
 //            std::memset(dict, 0, DICT_SIZE);
             // reset dictionary
             for (uint i = 0 ; i < 256 ; i++ ) {
-                dict[i * DICT_STRING_SIZE] = (char)i;
+                dict[i * DICT_STRING_SIZE] = (unsigned char)i;
             }
             nextCode = 258;
             // clear prevString
@@ -138,7 +162,8 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
         currCode++;
         if (currCode == nextBump - 1) {
             nextBump <<= 1;                     // nextBump *= 2
-            codeSize++;
+            codeBits++;
+//            codeBitsMask = (1 << codeBits) - 1;
         }
 
         if (code == EOF_CODE) {
@@ -193,7 +218,7 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
     }
 }
 
-int main(int argc, char *argv[])
+int main()
 {
     std::ifstream f1("/Users/roryhill/Pictures/_TIFF_lzw1/lzw.tif", std::ios::in | std::ios::binary | std::ios::ate);
     std::vector<char> lzwFirstStrip(lzwLengthFirstStrip);
@@ -211,6 +236,9 @@ int main(int argc, char *argv[])
 
     // Create the byte array to hold the decompressed byte stream
     std::vector<char> ba(uncompressedLengthFirstStrip);
+
+    // Prebuild a bit mask that removes consumed code from the bit buffer
+    buildCodeMask();
 
     int runs = 100;
     auto start = std::chrono::steady_clock::now();
