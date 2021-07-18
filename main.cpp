@@ -65,7 +65,7 @@ void byteArrayToHex(std::vector<char> v, int cols, int start, int end)
     int n = 0;
     std::cout << std::setw(2) << std::endl;
     for (int i = start; i < start + end; i++) {
-        uint x = (0xff & (unsigned int)v[i]);
+        uint8_t x = (0xff & (unsigned int)v[i]);
         std::cout << std::hex << std::uppercase << x << " ";
         if (++n % cols == 0) std::cout << " " << std::dec << n + start << std::endl;
     }
@@ -81,6 +81,7 @@ void byteArrayToHex(std::vector<char> v, int cols, int start, int end)
 void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
 {
     char* c = inBa.data();
+    uint8_t cc = (*c & 0xff);
     char* out = outBa.data();
     int rowLength = 2400;
     // dictionary has 4096 (12 bit max) items of 32 bytes (max string length)
