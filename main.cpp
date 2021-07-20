@@ -42,6 +42,11 @@
     all string and QByteArray functions, using byte arrays and pointers, running in
     3.3 ms.
 
+    Things that have not helped:
+
+    - do basic lzw decompression and make a second pass to do prediction increment.
+    - use pointer instead or array indice to output char string for code.
+
 */
 
 #include <chrono>
@@ -66,7 +71,7 @@ void byteArrayToHex(std::vector<char> v, int cols, unsigned long start, unsigned
     int n = 0;
     std::cout << std::setw(2) << '\n';
     for (unsigned long i = start; i < start + end; i++) {
-        auto x = (0xff & v[i]);
+        uint8_t x = (0xff & v[i]);
         std::cout << std::hex << std::uppercase << x << " ";
         if (++n % cols == 0) std::cout << " " << std::dec << n + (int)start << '\n';
     }
@@ -103,8 +108,8 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
     unsigned long incoming = 0;                     // incoming counter
     int n = 0;                                      // code counter
     // bit management
-    int32_t pending = 0;                            // bit buffer
-    int32_t availBits = 0;                          // bits in the buffer
+    int32_t iBuf = 0;                               // bit buffer
+    int32_t nBits = 0;                              // bits in the buffer
     int32_t codeBits = 9;                           // number of bits to make code
     int32_t currCode = 257;                         // start code
     int32_t nextBump = 512;                         // when to increment code size 1st time
@@ -114,22 +119,22 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
     // read incoming bytes into the bit buffer (pending) using the char pointer c
     while (incoming < inBa.size()) {
         // GetNextCode
-        while (availBits < codeBits) {
-            pending = (pending<<8) | (uint8_t)*c;   // make room in bit buf for char
-            availBits += 8;
+        while (nBits < codeBits) {
+            iBuf = (iBuf<<8) | (uint8_t)*c;   // make room in bit buf for char
+            nBits += 8;
             c++;
             incoming++;
         }
-        code = pending >> (availBits - codeBits);   // extract code from buffer
-        availBits -= codeBits;                      // update available
-        pending &= codeMask[availBits];             // apply mask to zero consumed code bits
+        code = iBuf >> (nBits - codeBits);   // extract code from buffer
+        nBits -= codeBits;                      // update available
+        iBuf &= codeMask[nBits];             // apply mask to zero consumed code bits
 
         if (code == CLEAR_CODE) {
             codeBits = 9;
             currCode = 257;
             nextBump = 512;
             // reset dictionary
-            for (uint i = 0 ; i < 256 ; i++ ) {
+            for (uint i = 0 ; i != 256 ; i++ ) {
                 dict[i * DICT_STRING_SIZE] = (char)i;
             }
             nextCode = 258;
@@ -179,7 +184,7 @@ void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
 
         // output char string for code (add from left)
         // pBuf   00000000 11111111 22222222 33333333
-        for (uint32_t i = 0; i < (uint32_t)sLen[code]; i++) {
+        for (uint32_t i = 0; i != (uint32_t)sLen[code]; i++) {
             // if end of row reset prev pixel rgb
             if (n % bytesPerRow == 0) pBuf = 0;
             // string char = code string element + value of 3rd previous pixel r/g/b
@@ -226,14 +231,17 @@ int main()
     // Prebuild a bit mask that removes consumed code from the bit buffer
     buildCodeMask();
 
-    int runs = 1;
-    auto start = std::chrono::steady_clock::now();
+    int runs = 100;
+
+//    using namespace std::chrono;
+    std::chrono::time_point<std::chrono::system_clock> start, end;
+    start = std::chrono::system_clock::now();
     for (int i = 0; i < runs; i++) {
         decompressLZW(lzwFirstStrip, ba);  //  3.2 - 3.8 ms per run on Rory macbookpro
     }
-    auto end = std::chrono::steady_clock::now();
+    end = std::chrono::system_clock::now();
 
-    double ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    double ms = (double)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     ms /= (1000 * runs);
     int pixels = 261600 / 3;
     double mp = (double)pixels / 1000000;
@@ -247,7 +255,7 @@ int main()
 
     // check result
     bool isErr = false;
-    for (int i = 0; i < 261600; i++) {
+    for (uint32_t i = 0; i < 261600; i++) {
         if (ba[i] != baseFirstStrip[i]) {
             std::cout << "error at " << i << '\n';
             isErr = true;
@@ -258,10 +266,10 @@ int main()
 
     // helper report
 //    byteArrayToHex(ba, 50, 0, 100);
-//    byteArrayToHex(baseFirstStrip, 50, 0, 100);
+//   byteArrayToHex(baseFirstStrip, 50, 0, 100);
 
     // pause if running executable in terminal
-//    std::cout << "Paused, press ENTER to continue." << std::endl;
-//    std::cin.ignore();
+    std::cout << "Paused, press ENTER to continue." << std::endl;
+    std::cin.ignore();
     exit(0);
 }

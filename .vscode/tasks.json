@@ -1,0 +1,46 @@
+{
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "clang++ build active file: Debug",
+            "command": "/usr/bin/clang++",
+            "args": [
+              "-std=c++11",
+              "-stdlib=libc++",
+              "-g",
+              "${file}",
+              "-o",
+              "${fileDirname}/${fileBasenameNoExtension}"
+            ],
+            "options": {
+              "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": {
+              "kind": "build",
+              "isDefault": true
+            }
+        },
+        {
+            "type": "shell",
+            "label": "clang++ build active file: Release",
+            "command": "/usr/bin/clang++",
+            "args": [
+              "-std=c++11",
+              "-stdlib=libc++",
+              "${file}",
+              "-o",
+              "${fileDirname}/${fileBasenameNoExtension}",
+            ],
+            "options": {
+              "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": {
+              "kind": "build",
+              "isDefault": true
+            }
+        }
+    ],
+    "version": "2.0.0"
+}
