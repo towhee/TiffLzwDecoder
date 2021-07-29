@@ -94,131 +94,18 @@ void buildCodeMask()
 //#define DICT_SIZE  DICT_STRING_SIZE * 4096   //131072
 //const uint32_t mask = (1 << 9) - 1;
 
-#define LZW_DICT_STRING_SIZE 32
-#define LZW_DICT_SIZE  LZW_DICT_STRING_SIZE * 4096   //131072
+#define LZW_STRING_SIZE 256
+#define LZW_STRINGS_SIZE 128000
 
-void decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
+void decompressLZW1(std::vector<char> &inBa, std::vector<char> &outBa)
 /*
     Works for RGB but not for RRGGBB (planarConfiguration = 2).  Requires tweak to pBuf.
 */
 {
-    // input and output pointers
-    char* c = inBa.data();
-    char* out = outBa.data();
-    // dictionary has 4096 (12 bit max) items of 32 bytes (max string length)
-    char dict[LZW_DICT_SIZE];                       // 4096 * 32
-//    uint32_t sLen[4096];                              // dictionary code string length
-    int8_t sLen[4096];                              // dictionary code string length
-    std::memset(&sLen, 1, 256);                    // faster than std::memset(&sLen, 1, 256);
-//    std::memset(&sLen, 1, 4096);                    // faster than std::memset(&sLen, 1, 256);
-    char ps[LZW_DICT_STRING_SIZE];                      // previous string
-    size_t psLen = 0;                               // length of prevString
-    uint32_t code;                                   // offset in dict (code * DICT_STRING_SIZE)
-    uint32_t nextCode = 258;
-    unsigned long incoming = 0;                     // incoming counter
-    unsigned long inBaLen = inBa.size();
-    uint32_t n = 0;                                      // code counter
-//    int32_t iBuf = 0;                              // bit buffer
-    uint32_t iBuf = 0;                              // bit buffer
-    int32_t nBits = 0;                              // bits in the buffer
-    int32_t codeBits = 9;                           // number of bits to make code
-    int32_t currCode = 257;                         // start code
-    int32_t nextBump = 512;                         // when to increment code size 1st time
-    uint32_t pBuf = 0;                              // previous out bit buffer
-    uint32_t mask = (1 << codeBits) - 1;
 
-    // read incoming bytes into the bit buffer (iBuf) using the char pointer c
-    while (incoming < inBaLen) {
-//        if (incoming >= 5400)
-//            int xxx = 0;
-        // GetNextCode
-        iBuf = (iBuf << 8) | (uint8_t)*c++;         // make room in bit buf for char
-        nBits += 8;
-        incoming++;
-        if (nBits < codeBits) {
-            iBuf = (iBuf << 8) | (uint8_t)*c++;     // make room in bit buf for char
-            nBits += 8;
-            incoming++;
-        }
-        code = ((iBuf >> (nBits - codeBits)) & mask); // extract code from buffer
-        nBits -= codeBits;                      // update available
-//        code = iBuf >> (nBits - codeBits);   // extract code from buffer
-//        nBits -= codeBits;                      // update available
-//        iBuf &= codeMask[nBits];             // apply mask to zero consumed code bits
-
-        if (code == CLEAR_CODE) {
-            codeBits = 9;
-            mask = (1 << codeBits) - 1;
-            currCode = 257;
-            nextBump = 512;
-            // reset dictionary
-            for (int i = 0 ; i != 256 ; i++ ) {
-                dict[i * LZW_DICT_STRING_SIZE] = (char)i;
-            }
-//            std::memset(&sLen, 1, 4096);
-            nextCode = 258;
-            // clear prevString
-            std::memset(ps, 0, LZW_DICT_STRING_SIZE);
-            psLen = 0;
-            continue;
-        }
-
-        if (code == EOF_CODE) {
-            break;
-        }
-
-        currCode++;
-        if (currCode == nextBump - 1) {
-            nextBump <<= 1;                     // nextBump *= 2
-            codeBits++;
-            mask = (1 << codeBits) - 1;
-        }
-
-        uint32_t codeOff = (uint32_t)code * LZW_DICT_STRING_SIZE;
-
-        // if code not found then add prevString + prevString[0]
-        if (code >= nextCode) {
-            std::memcpy(&dict[codeOff], &ps, (size_t)psLen);
-            std::memcpy(&dict[codeOff + (size_t)psLen], &ps, 1);
-            sLen[code] = (int8_t)psLen + 1;
-        }
-
-        // output char string for code (add from left, remove from right)
-        // pBuf   00000000 11111111 22222222 33333333
-        for (uint32_t i = 0; i != (uint32_t)sLen[code]; i++) {
-            if (n % bytesPerRow == 0) pBuf = 0;
-            char b = dict[codeOff + i] + (char)(pBuf & 0xFF);
-            /*
-            if (n == 16287)
-                int xxx = 0;
-            if (b != baseFirstStrip[n]) {
-                std::cout << "error at " << n << '\n';
-                return;
-            }
-            //*/
-            *out = b;
-            out++;
-            pBuf = (pBuf >> 8) | (uint32_t)((uint8_t)b << 16);
-           n++;
-        }
-
-        // add string to nextCode (prevString + dictionary[code][0])
-        if (psLen && nextCode <= MAXCODE) {
-            std::memcpy(&dict[nextCode * LZW_DICT_STRING_SIZE], &ps, psLen);
-            std::memcpy(&dict[nextCode * LZW_DICT_STRING_SIZE + psLen], &dict[codeOff], (size_t)sLen[code]);
-            sLen[nextCode] = (int8_t)(psLen + 1);
-            nextCode++;
-        }
-        // prevString = dictionary[code];
-        memcpy(&ps, &dict[codeOff], (size_t)sLen[code]);
-        psLen = (size_t)sLen[code];
-
-//        if (n > 50) break;
-    } // end while}
-//    std::cout << "n = " << n;
 }
 
-bool decompressLZW1(std::vector<char> &inBa, std::vector<char> &outBa)
+bool decompressLZW(std::vector<char> &inBa, std::vector<char> &outBa)
 /*
     Works for RGB but not for RRGGBB (planarConfiguration = 2).  Requires tweak to pBuf.
 */
@@ -232,12 +119,20 @@ bool decompressLZW1(std::vector<char> &inBa, std::vector<char> &outBa)
     // NEW
     // array of pointers to the string for each possible code
     char* s[4096];
-    char* sEnd = s[0];
-    char strings[LZW_DICT_SIZE];
+    char strings[LZW_STRINGS_SIZE];
+//    std::vector<char> strings[LZW_DICT_SIZE];
+    // initialize code strings
+    for (int i = 0 ; i != 256 ; i++ ) {
+        strings[i] = (char)i;
+        s[i] = &strings[i];
+    }
+    strings[256] = 0;  s[256] = &strings[256];
+    strings[257] = 0;  s[257] = &strings[257];
+    char* sEnd;
 
     int8_t sLen[4096];                              // code string length
     std::memset(&sLen, 1, 256);                     // 0-255 one char strings
-    char ps[LZW_DICT_STRING_SIZE];                  // previous string
+    char ps[LZW_STRING_SIZE];                       // previous string
     size_t psLen = 0;                               // length of prevString
     uint32_t code;                                   // offset in dict (code * DICT_STRING_SIZE)
     uint32_t nextCode = 258;
@@ -247,22 +142,20 @@ bool decompressLZW1(std::vector<char> &inBa, std::vector<char> &outBa)
     uint32_t iBuf = 0;                              // bit buffer
     int32_t nBits = 0;                              // bits in the buffer
     int32_t codeBits = 9;                           // number of bits to make code
-    int32_t currCode = 257;                         // start code
-    int32_t nextBump = 512;                         // when to increment code size 1st time
+    uint32_t nextBump = 511;                        // when to increment code size 1st time
     uint32_t pBuf = 0;                              // previous out bit buffer
     uint32_t mask = (1 << codeBits) - 1;
 
     // read incoming bytes into the bit buffer (iBuf) using the char pointer c
     while (incoming < inBaLen) {
-//        if (n % 1000 == 0) qDebug() << "n =" << n;
         // GetNextCode
         iBuf = (iBuf << 8) | (uint8_t)*c++;         // make room in bit buf for char
         nBits += 8;
-        incoming++;
+        ++incoming;
         if (nBits < codeBits) {
             iBuf = (iBuf << 8) | (uint8_t)*c++;     // make room in bit buf for char
             nBits += 8;
-            incoming++;
+            ++incoming;
         }
         code = (iBuf >> (nBits - codeBits)) & mask; // extract code from buffer
         nBits -= codeBits;                          // update available bits to process
@@ -270,29 +163,9 @@ bool decompressLZW1(std::vector<char> &inBa, std::vector<char> &outBa)
         if (code == CLEAR_CODE) {
             codeBits = 9;
             mask = (1 << codeBits) - 1;
-            currCode = 257;
-            nextBump = 512;
-            // reset dictionary
-            // OLD
-//            for (int i = 0 ; i != 256 ; i++ ) {
-//                dict[i * LZW_DICT_STRING_SIZE] = (char)i;
-//            }
-            // NEW
-            qDebug() << "Prev strings length =" << sEnd - s[0];
-            for (int i = 0 ; i != 256 ; i++ ) {
-                strings[i] = (char)i;
-                s[i] = &strings[i];
-            }
-            s[257] = &strings[255];
+            nextBump = 511;
             sEnd = s[257];
-//            uint32_t test = 45;
-//            s[48] = s[test] + 3;
-//            char x = *(s[48]);
-//            auto y = off[test-1];
-//            std::memset(&sLen, 1, 4096);
             nextCode = 258;
-            // clear prevString
-            std::memset(ps, 0, LZW_DICT_STRING_SIZE);
             psLen = 0;
             continue;
         }
@@ -301,21 +174,9 @@ bool decompressLZW1(std::vector<char> &inBa, std::vector<char> &outBa)
             return ret;
         }
 
-        currCode++;
-        if (currCode == nextBump - 1) {
-            nextBump <<= 1;                     // nextBump *= 2
-            codeBits++;
-            mask = (1 << codeBits) - 1;
-        }
-
-//        uint32_t codeOff = (uint32_t)code * LZW_DICT_STRING_SIZE; // OLD
-//        char* codeOff = off[code]; // NEW
-
         // if code not found then add prevString + prevString[0]
         if (code == nextCode) {
-
             s[code] = sEnd;
-//            s[code] = s[code-1] + sLen[code-1];
             std::memcpy(s[code], &ps, (size_t)psLen);
             std::memcpy(s[code] + (size_t)psLen, &ps, 1);
             sLen[code] = (int8_t)psLen + 1;
@@ -326,30 +187,30 @@ bool decompressLZW1(std::vector<char> &inBa, std::vector<char> &outBa)
         // pBuf   00000000 11111111 22222222 33333333
         for (uint32_t i = 0; i != (uint32_t)sLen[code]; i++) {
             if (n % bytesPerRow == 0) pBuf = 0;
-//            char b = dict[codeOff + i] + (char)(pBuf & 0xFF); // OLD
-            char b = *(s[code] + i) + (char)(pBuf & 0xFF);
-            *out = b;
-            out++;
+            char b = *(s[code] + i) + (uint8_t)(pBuf & 0xFF);
+            *out++ = b;
             pBuf = (pBuf >> 8) | (uint32_t)((uint8_t)b << 16);
-            n++;
+            ++n;
         }
 
         // add string to nextCode (prevString + strings[code][0])
-        if (psLen && nextCode <= MAXCODE) {
+        if (psLen/* && nextCode <= MAXCODE*/) {
             s[nextCode] = sEnd;
-//            s[nextCode] = s[nextCode-1] + sLen[nextCode-1];
             std::memcpy(s[nextCode], &ps, psLen);
             std::memcpy(s[nextCode] + psLen, s[code], (size_t)sLen[code]);
             sLen[nextCode] = (int8_t)(psLen + 1);
             sEnd = s[nextCode] + psLen + 1;
-            nextCode++;
+            ++nextCode;
         }
         // prevString = dictionary[code];
-//        memcpy(&ps, &dict[codeOff], (size_t)sLen[code]); // OLD
-        memcpy(&ps,  s[code], (size_t)sLen[code]);
+        memcpy(&ps, s[code], (size_t)sLen[code]);
         psLen = (size_t)sLen[code];
 
-//        if ( n > 50) break;
+        if (nextCode == nextBump) {
+            nextBump = (nextBump << 1) + 1;
+            ++codeBits;
+            mask = (1 << codeBits) - 1;
+        }
 
     } // end while}
 
@@ -378,32 +239,50 @@ int main()
 //    // Prebuild a bit mask that removes consumed code from the bit buffer
     buildCodeMask();
 
-    int runs = 1000;
+    /*
+    int repeat = 1;
+    int runs = 1;
+    //*/
+//    /*
+    int repeat = 10;
+    int runs = 10000;
+    //*/
     double ms;
+    double msSum = 0;
     double mp;
     int pixels;
     double mpPerSec;
     bool isErr;
     std::chrono::time_point<std::chrono::system_clock> start, end;
 
-    /* decompressLZW
-    start = std::chrono::system_clock::now();
-    for (int i = 0; i < runs; i++) {
-        decompressLZW(lzwFirstStrip, ba);  //  3.2 - 3.8 ms per run on Rory macbookpro
+//    /* decompressLZW
+    for (int j = 0; j < repeat; ++j) {
+        start = std::chrono::system_clock::now();
+        for (int i = 0; i < runs; ++i) {
+            decompressLZW(lzwFirstStrip, ba);  //  3.2 - 3.8 ms per run on Rory macbookpro
+        }
+        end = std::chrono::system_clock::now();
+
+        ms = (double)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        msSum += ms;
+        ms /= (1000 * runs);
+        pixels = 261600 / 3;
+        mp = (double)pixels / 1000000;
+        mpPerSec = mp / ms * 1000;                        // megapixels / sec
+
+//        if (ms >= 2.0) continue;
+
+        std::cout
+             << "decompressLZW " << std::setw(6) << j + 1
+             << "   runs: " << std::setw(6) << runs
+             << std::fixed << std::showpoint << std::setprecision(2)
+             << "   ms/run: " << ms
+             << "   mp/sec: " << mpPerSec
+             << '\n';
     }
-    end = std::chrono::system_clock::now();
 
-    ms = (double)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    ms /= (1000 * runs);
-    pixels = 261600 / 3;
-    mp = (double)pixels / 1000000;
-    mpPerSec = mp / ms * 1000;                        // megapixels / sec
-
-    std::cout << std::fixed << std::showpoint << std::setprecision(2)
-         << "decompressLZW    runs: " << runs
-         << "   ms: " << ms
-         << "   mp/sec: " << mpPerSec
-         << "    ";
+    double msAve = msSum / (repeat * runs * 1000);
+    std::cout << std::setw(46) << "Average: " << msAve << '\n';
 
     // check result
     isErr = false;
@@ -417,7 +296,7 @@ int main()
     if (!isErr) std::cout << "No errors." << '\n' << '\n';
     //*/
 
-//    /* decompressLZW1
+    /* decompressLZW1
 
     start = std::chrono::system_clock::now();
     for (int i = 0; i < runs; i++) {
@@ -450,12 +329,10 @@ int main()
     // */
 
     // helper report
+//    std::cout << "decompressLZW1:" << '\n';
 //    byteArrayToHex(ba, 25, 0, 50);
+//    std::cout << "base:" << '\n';
 //    byteArrayToHex(baseFirstStrip, 25, 0, 50);
-    std::cout << "decompressLZW1:" << '\n';
-    byteArrayToHex(ba, 25, 0, 50);
-    std::cout << "base:" << '\n';
-    byteArrayToHex(baseFirstStrip, 25, 0, 50);
 
     // pause if running executable in terminal
     std::cout << "Paused, press ENTER to continue." << std::endl;
