@@ -90,6 +90,20 @@ const unsigned int EOF_CODE = 257;
 const unsigned int MAXCODE = 4095;      // 12 bit max less some head room
 
 // Enter info for base and lwz tiff files
+
+
+/* D:/Pictures/_TIFF_lzw1/lzwP_8.tif LZW Predictive working
+const std::string base = "D:/Pictures/_JPG/base.tif";
+const std::string lzw  = "D:/Pictures/_TIFF_lzw1/lzwP_8.tif";
+const uint32_t lzwOffsetToFirstStrip = 34312;
+const uint32_t lzwLengthFirstStrip = 123177;
+const uint32_t lzwRowsPerStrip = 109;
+const uint32_t baseOffsetToFirstStrip = 34296;
+const uint32_t basedLengthFirstStrip = 1080000;
+const int bytesPerRow = 3600;
+const bool predictor = true;
+//*/
+
 ///* D:/Pictures/_TIFF_lzw1/lzwP_8.tif LZW Predictive working
 const std::string base = "D:/Pictures/_TIFF_lzw1/base_8.tif";
 const std::string lzw  = "D:/Pictures/_TIFF_lzw1/lzwP_8.tif";
@@ -459,10 +473,10 @@ int main()
     if (!isErr) std::cout << "No errors." << '\n' << '\n';
 
     // helper report
-    std::cout << "decompressLZW:" << '\n';
-    byteArrayToHex(ba, 25, 0, 50);
+//    std::cout << "decompressLZW:" << '\n';
+//    byteArrayToHex(ba, 25, 0, 50);
     std::cout << "base:" << '\n';
-    byteArrayToHex(baseFirstStrip, 25, 0, 50);
+    byteArrayToHex(baseFirstStrip, 50, 0, 500);
 
     // pause if running executable in terminal
     std::cout << "Paused, press ENTER to continue." << std::endl;
